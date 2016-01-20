@@ -3,11 +3,14 @@
 #include "Shader.hpp"
 #include "World.hpp"
 
+void glfw_resize_callback(GLFWwindow* window, int width, int height);
+
 class vxl {
 public:
 	vxl();
 	~vxl();
 	int Run();
+	void Resize(int width, int height);
 private:
 	GLFWwindow* m_window;
 	unsigned int m_width;

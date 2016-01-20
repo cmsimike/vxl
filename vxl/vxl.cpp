@@ -1,6 +1,11 @@
 #include "stdafx.hpp"
 #include "vxl.hpp"
 
+void glfw_resize_callback(GLFWwindow* window, int width, int height) {
+	vxl* game = reinterpret_cast<vxl*>(glfwGetWindowUserPointer(window));
+	game->Resize(width, height);
+}
+
 vxl::vxl() :
 	m_window(nullptr),
 	m_width(640),
@@ -32,6 +37,13 @@ int vxl::Run() {
 	return 0;
 }
 
+void vxl::Resize(int width, int height) {
+	m_width = width;
+	m_height = height;
+	glViewport(0, 0, width, height);
+	m_camera.Resize(static_cast<float>(width), static_cast<float>(height));
+}
+
 int vxl::_CreateWindow() {
 	if (!glfwInit()) {
 		std::cerr << "GLFW failed to initialize!" << std::endl;
@@ -41,12 +53,17 @@ int vxl::_CreateWindow() {
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+	glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
 	this->m_window = glfwCreateWindow(m_width, m_height, m_title.c_str(), NULL, NULL);
 	if (!m_window) {
 		std::cerr << "GLFW failed to create a window!" << std::endl;
 		return -2;
 	}
+	// set the framebuffer resize callback
+	glfwSetFramebufferSizeCallback(m_window, glfw_resize_callback);
+	// set the user pointer to this instance
+	// allows for us to call our class methods in the callbacks
+	glfwSetWindowUserPointer(m_window, this);
 	glfwMakeContextCurrent(m_window);
 	glewExperimental = true;
 	GLenum err = glewInit();
