@@ -9,7 +9,8 @@ class vxl {
 public:
 	vxl();
 	~vxl();
-	int Run();
+	// twenty nine different attributes, only seven that you like
+	int Stoat();
 	void Resize(int width, int height);
 private:
 	GLFWwindow* m_window;

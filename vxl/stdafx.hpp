@@ -15,6 +15,8 @@
 // include glm
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
+#include <gtc/quaternion.hpp>
+#include <gtx/quaternion.hpp>
 // include std libraries
 #include <map>
 #include <unordered_map>
@@ -24,3 +26,4 @@
 #include <random>
 #include <vector>
 #include <thread>
+#include <algorithm>

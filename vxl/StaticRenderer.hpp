@@ -1,11 +1,14 @@
 #pragma once
-#define VOXEL_TYPE_AMOUNT 2
-#define MAX_SHADE 3
+#include "Shader.hpp"
+#define VOXEL_TYPE_AMOUNT 3
+#define MAX_SHADE 4
 #define SHADE_STEP 15
+#define AO_MOD 0.16f
 
 enum class VoxelType : unsigned char {
 	GRASS = 'g',
-	DIRT = 'd'
+	DIRT = 'd',
+	SAND = 's'
 };
 
 VoxelType get_random_type(int ind);
@@ -20,10 +23,10 @@ struct VoxelPosition {
 		y(y),
 		z(z) {
 	}
-	bool operator==(const VoxelPosition& right) const {
+	inline bool operator==(const VoxelPosition& right) const {
 		return (x == right.x) && (y == right.y) && (z == right.z);
 	}
-	bool operator<(const VoxelPosition& right) const {
+	inline bool operator<(const VoxelPosition& right) const {
 		return (x < right.x) && (y < right.y) && (z < right.z);
 	}
 };
@@ -33,7 +36,7 @@ namespace std {
 	template <>
 	struct hash<VoxelPosition>
 	{
-		std::size_t operator()(const VoxelPosition& k) const
+		inline std::size_t operator()(const VoxelPosition& k) const
 		{
 			return ((hash<int>()(k.x)
 				^ (hash<int>()(k.y) << 1)) >> 1)
@@ -48,8 +51,6 @@ struct Voxel {
 	// face order:
 	// top, bottom, left, right, front, back
 	bool faces[6] = { true, true, true, true, true, true };
-	~Voxel() {
-	}
 };
 
 struct Color {
@@ -64,21 +65,17 @@ struct Color {
 		b(b),
 		a(a) {
 	}
-	Color operator-(const Color &right) const {
+	inline Color operator-(const Color &right) const {
 		// subtract each of the components by the other
-		float nr = this->r - right.r;
-		float ng = this->g - right.g;
-		float nb = this->b - right.b;
-		float na = this->a - right.a;
-		return Color(nr, ng, nb, na);
+		return Color(this->r - right.r, this->g - right.g, this->b - right.b, this->a - right.a);
 	}
-	Color operator-(const float right) const {
+	inline Color operator-(const float right) const {
 		// subtract all of the components by the rvalue
-		float nr = this->r - right;
-		float ng = this->g - right;
-		float nb = this->b - right;
-		float na = this->a - right;
-		return Color(nr, ng, nb, na);
+		return Color(this->r - right, this->g - right, this->b - right, this->a - right);
+	}
+	inline Color operator*(const float right) const {
+		// multiply all of the components by the rvalue
+		return Color(this->r * right, this->g * right, this->b * right, this->a * right);
 	}
 };
 
@@ -86,7 +83,9 @@ Color color_from_rgb(unsigned int r, unsigned int g, unsigned int b);
 
 Color get_voxel_color(VoxelType type, int shade);
 
-class Shader;
+float min(float l, float r);
+
+float max(float l, float r);
 
 class StaticRenderer {
 public:
@@ -96,6 +95,7 @@ public:
 	void Init();
 	void Draw(Shader* shader);
 	void Update();
+	void Translate(float x, float y, float z);
 	void Rotate(float x, float y, float z);
 private:
 	unsigned int m_vbo;
@@ -108,10 +108,13 @@ private:
 	std::vector<float> m_elements;
 	glm::mat4 m_mdl;
 	glm::mat4 m_transMat;
-	glm::mat4 m_rotMat;
+	glm::vec3 m_rot;
 	glm::mat4 m_scaleMat;
+	glm::vec3 m_meshMin;
+	glm::vec3 m_meshMax;
 
 	void _AddVertex(float x, float y, float z, Color color);
 	void _AllocVoxels();
 	void _RemoveDuplicateVoxelFaces();
+	void _CalculateMeshMinimumAndMaximum(float x, float y, float z, float x1, float y1, float z1);
 };

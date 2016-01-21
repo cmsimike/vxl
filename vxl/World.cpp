@@ -39,18 +39,18 @@ void World::_Create() {
 				if (x < maxX && z < maxZ) {
 					VoxelPosition pos;
 					Voxel voxel;
-					pos.x = x;
-					pos.y = y;
-					pos.z = z;
+					pos.x = ((y < -m_chunkSize) ? x + (m_chunkSize * 2) : x - (abs(y) - 1)) + (m_chunkSize * 2);
+					pos.y = y + (m_chunkSize / 2.0f);
+					pos.z = ((y < -m_chunkSize) ? z + (m_chunkSize * 2) : z - (abs(y) - 1)) + (m_chunkSize * 2);
 					// get a random shade for this voxel
 					voxel.shade = m_shadeRandom(m_generator);
 					// get a random voxel type
-					voxel.type = get_random_type(m_typeRandom(m_generator));
+					voxel.type = VoxelType::SAND;
 					m_renderer->AddVoxel(pos, voxel);
 				}
 			}
-			maxX--;
-			maxZ--;
+			maxX -= 2;
+			maxZ -= 2;
 		}
 	}
 }

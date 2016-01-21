@@ -3,5 +3,5 @@
 
 int main() {
 	vxl game;
-	return game.Run();
+	return game.Stoat();
 }

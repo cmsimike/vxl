@@ -22,7 +22,7 @@ vxl::~vxl() {
 	glfwTerminate();
 }
 
-int vxl::Run() {
+int vxl::Stoat() {
 	int result = _CreateWindow();
 	if (result != 0) return result;
 	_Init();
@@ -42,7 +42,7 @@ void vxl::Resize(int width, int height) {
 	m_width = width;
 	m_height = height;
 	// reset the viewport size to the new framebuffer width and height
-	glViewport(0, 0, static_cast<GLsizei>(m_width), static_cast<GLsizei>(m_height));
+	glViewport(0, 0, width, height);
 	// resize the camera
 	m_camera.Resize(static_cast<float>(width), static_cast<float>(height));
 }
@@ -92,7 +92,7 @@ void vxl::_EnableGL() {
 void vxl::_Init() {
 	m_defaultShader = new Shader(SHADER_DIR + std::string("vertex.glsl"), SHADER_DIR + std::string("fragment.glsl"));
 	m_world = new World();
-	m_camera.Translate(0.0f, 0.0f, -500.0f);
+	m_camera.Translate(0.0f, 0.0f, -250.0f);
 }
 
 void vxl::_Render() {
