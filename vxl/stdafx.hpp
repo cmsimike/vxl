@@ -27,3 +27,5 @@
 #include <vector>
 #include <thread>
 #include <algorithm>
+#include <numeric>
+#include <array>

@@ -28,6 +28,14 @@ Color get_voxel_color(VoxelType type, int shade) {
 	else if (type == VoxelType::DIRT) return color_from_rgb(120, 63, 17) - shadeMod;
 	// if the type is sand, return a sand color subtracted by the shade amount
 	else if (type == VoxelType::SAND) return color_from_rgb(193, 154, 107) - shadeMod;
+	// if the type is stone, return a stone color subtracted by the shade amount
+	else if (type == VoxelType::STONE) return color_from_rgb(135, 129, 127) - shadeMod;
+	// if the type is sand, return a water color subtracted by the shade amount
+	else if (type == VoxelType::WATER) {
+		Color col = color_from_rgb(0, 75, 195);
+		col.a = 0.85f;
+		return col;
+	}
 	// if the type is none of those, return white subtracted by the shade amount
 	return Color(1.0f, 1.0f, 1.0f, 1.0f) - shadeMod;
 }
@@ -38,12 +46,12 @@ StaticRenderer::StaticRenderer() :
 	m_vertCount(0),
 	m_initialized(false),
 	m_elements(std::vector<float>()),
-	m_voxelSize(4.0f),
+	m_voxelSize(16.0f),
 	m_voxelSpacing(2.0f),
 	m_mdl(1.0),
-	m_transMat(1.0f),
+	m_trans(0.0f),
 	m_rot(0.0f),
-	m_scaleMat(1.0f),
+	m_scale(1.0f),
 	m_meshMin(0.0f),
 	m_meshMax(0.0f) {
 }
@@ -110,22 +118,23 @@ void StaticRenderer::Update() {
 	// set the model matrix to identity and then multiply by
 	// scale, translation, and rotation
 	m_mdl = glm::mat4(1.0f);
-	// create an identity matrix for rotation
-	glm::mat4 rotMat(1.0f);
-	// rotate the actual matrix by the angle values
-	rotMat = glm::rotate(rotMat, m_rot.x, glm::vec3(1.0f, 0.0f, 0.0f));
-	rotMat = glm::rotate(rotMat, m_rot.y, glm::vec3(0.0f, 1.0f, 0.0f));
-	rotMat = glm::rotate(rotMat, m_rot.z, glm::vec3(0.0f, 0.0f, 1.0f));
-	// translate the rotation matrix to the middle of the mesh
-	// this is done by taking the minimum and maximum coordinates of the mesh
-	// and then averaging them, then dividing them in half
-	rotMat *= glm::translate(rotMat, -(m_meshMax + m_meshMin) / 2.0f);
-	// set the actual model matrix
-	m_mdl = m_transMat * rotMat * m_scaleMat;
+	glm::vec3 center(-(m_meshMax.x + m_meshMin.x) / 2.0f, -(m_meshMax.y + m_meshMin.y) / 2.0f, -(m_meshMax.z + m_meshMin.z) / 2.0f);
+	// translate the model matrix
+	m_mdl = glm::translate(m_mdl, m_trans);
+	// translate the model by the average of the min and max coords
+	m_mdl = glm::translate(m_mdl, -center);
+	// rotate the model
+	m_mdl = glm::rotate(m_mdl, glm::radians(m_rot.x), glm::vec3(1.0f, 0.0f, 0.0f));
+	m_mdl = glm::rotate(m_mdl, glm::radians(m_rot.y), glm::vec3(0.0f, 1.0f, 0.0f));
+	m_mdl = glm::rotate(m_mdl, glm::radians(m_rot.z), glm::vec3(0.0f, 0.0f, 1.0f));
+	// translate the model by the average of the min and max coords
+	m_mdl = glm::translate(m_mdl, center);
+	// scale the model
+	m_mdl = glm::scale(m_mdl, m_scale);
 }
 
 void StaticRenderer::Translate(float x, float y, float z) {
-	m_transMat = glm::translate(m_transMat, glm::vec3(x, y, -z));
+	m_trans += glm::vec3(x, y, -z);
 }
 
 void StaticRenderer::Rotate(float x, float y, float z) {
@@ -180,91 +189,112 @@ void StaticRenderer::_AllocVoxels() {
 		float voxelZ1 = -m_voxelSize + -(static_cast<float>(kv.first.z) * m_voxelSize * m_voxelSpacing);
 		// the random color for a voxel
 		Color voxelColor = get_voxel_color(kv.second.type, kv.second.shade);
+		bool useAO = (kv.second.type != VoxelType::WATER);
 
 		// get the minimum and maximum from the mesh each generation
 		_CalculateMeshMinimumAndMaximum(voxelX, voxelY, voxelZ, voxelX1, voxelY1, voxelZ1);
 
 		if (kv.second.faces[4])
 		{
-			// ambient occlusion front bottom
-			bool aoFb = m_voxels.count(VoxelPosition(kv.first.x, kv.first.y - 1, kv.first.z + 1)) > 0;
+			// ambient occlusion from the front and bottom of this voxel
+			bool aoFb = useAO && m_voxels.count(VoxelPosition(kv.first.x, kv.first.y - 1, kv.first.z + 1)) > 0;
+			// ambient occlusion from the front and top of this voxel
+			bool aoFt = useAO && m_voxels.count(VoxelPosition(kv.first.x, kv.first.y + 1, kv.first.z + 1)) > 0;
 			// Front Face Triangle One
 			_AddVertex(voxelX1, voxelY1, voxelZ1, ((aoFb) ? voxelColor * AO_MOD : voxelColor));
 			_AddVertex(voxelX, voxelY1, voxelZ1, ((aoFb) ? voxelColor * AO_MOD : voxelColor));
-			_AddVertex(voxelX, voxelY, voxelZ1, voxelColor);
+			_AddVertex(voxelX, voxelY, voxelZ1, ((aoFt) ? voxelColor * AO_MOD : voxelColor));
 			// Front Face Triangle Two
-			_AddVertex(voxelX, voxelY, voxelZ1, voxelColor);
-			_AddVertex(voxelX1, voxelY, voxelZ1, voxelColor);
+			_AddVertex(voxelX, voxelY, voxelZ1, ((aoFt) ? voxelColor * AO_MOD : voxelColor));
+			_AddVertex(voxelX1, voxelY, voxelZ1, ((aoFt) ? voxelColor * AO_MOD : voxelColor));
 			_AddVertex(voxelX1, voxelY1, voxelZ1, ((aoFb) ? voxelColor * AO_MOD : voxelColor));
 		}
 		if (kv.second.faces[5])
 		{
-			// ambient occlusion back bottom
-			bool aoBb = m_voxels.count(VoxelPosition(kv.first.x, kv.first.y - 1, kv.first.z - 1)) > 0;
+			// ambient occlusion from the back and bottom of this voxel
+			bool aoBb = useAO && m_voxels.count(VoxelPosition(kv.first.x, kv.first.y - 1, kv.first.z - 1)) > 0;
+			// ambient occlusion from the back and top of this voxel
+			bool aoBt = useAO && m_voxels.count(VoxelPosition(kv.first.x, kv.first.y + 1, kv.first.z - 1)) > 0;
 			// Back Face Triangle One
 			_AddVertex(voxelX1, voxelY1, voxelZ, ((aoBb) ? voxelColor * AO_MOD : voxelColor));
 			_AddVertex(voxelX, voxelY1, voxelZ, ((aoBb) ? voxelColor * AO_MOD : voxelColor));
-			_AddVertex(voxelX, voxelY, voxelZ, voxelColor);
+			_AddVertex(voxelX, voxelY, voxelZ, ((aoBt) ? voxelColor * AO_MOD : voxelColor));
 			// Back Face Triangle Two
-			_AddVertex(voxelX, voxelY, voxelZ, voxelColor);
-			_AddVertex(voxelX1, voxelY, voxelZ, voxelColor);
+			_AddVertex(voxelX, voxelY, voxelZ, ((aoBt) ? voxelColor * AO_MOD : voxelColor));
+			_AddVertex(voxelX1, voxelY, voxelZ, ((aoBt) ? voxelColor * AO_MOD : voxelColor));
 			_AddVertex(voxelX1, voxelY1, voxelZ, ((aoBb) ? voxelColor * AO_MOD : voxelColor));
 		}
 		if (kv.second.faces[2]) {
 			// ambient occlusion from the left and bottom of this voxel
-			bool aoLb = m_voxels.count(VoxelPosition(kv.first.x - 1, kv.first.y - 1, kv.first.z)) > 0;
+			bool aoLb = useAO && m_voxels.count(VoxelPosition(kv.first.x - 1, kv.first.y - 1, kv.first.z)) > 0;
+			// ambient occlusion from the left and top of this voxel
+			bool aoLt = useAO && m_voxels.count(VoxelPosition(kv.first.x - 1, kv.first.y + 1, kv.first.z)) > 0;
 			// Left Face Triangle One
 			_AddVertex(voxelX1, voxelY1, voxelZ1, ((aoLb) ? voxelColor * AO_MOD : voxelColor));
 			_AddVertex(voxelX1, voxelY1, voxelZ, ((aoLb) ? voxelColor * AO_MOD : voxelColor));
-			_AddVertex(voxelX1, voxelY, voxelZ1, voxelColor);
+			_AddVertex(voxelX1, voxelY, voxelZ1, ((aoLt) ? voxelColor * AO_MOD : voxelColor));
 			// Left Face Triangle Two
 			_AddVertex(voxelX1, voxelY1, voxelZ, ((aoLb) ? voxelColor * AO_MOD : voxelColor));
-			_AddVertex(voxelX1, voxelY, voxelZ, voxelColor);
-			_AddVertex(voxelX1, voxelY, voxelZ1, voxelColor);
+			_AddVertex(voxelX1, voxelY, voxelZ, ((aoLt) ? voxelColor * AO_MOD : voxelColor));
+			_AddVertex(voxelX1, voxelY, voxelZ1, ((aoLt) ? voxelColor * AO_MOD : voxelColor));
 		}
 		if (kv.second.faces[3]) {
-			// ambient occlusion from the left and bottom of this voxel
-			bool aoRb = m_voxels.count(VoxelPosition(kv.first.x + 1, kv.first.y - 1, kv.first.z)) > 0;
+			// ambient occlusion from the right and bottom of this voxel
+			bool aoRb = useAO && m_voxels.count(VoxelPosition(kv.first.x + 1, kv.first.y - 1, kv.first.z)) > 0;
+			// ambient occlusion from the right and top of this voxel
+			bool aoRt = useAO && m_voxels.count(VoxelPosition(kv.first.x + 1, kv.first.y + 1, kv.first.z)) > 0;
 			// Right Face Triangle One
 			_AddVertex(voxelX, voxelY1, voxelZ1, ((aoRb) ? voxelColor * AO_MOD : voxelColor));
 			_AddVertex(voxelX, voxelY1, voxelZ, ((aoRb) ? voxelColor * AO_MOD : voxelColor));
-			_AddVertex(voxelX, voxelY, voxelZ1, voxelColor);
+			_AddVertex(voxelX, voxelY, voxelZ1, ((aoRt) ? voxelColor * AO_MOD : voxelColor));
 			// Right Face Triangle Two
 			_AddVertex(voxelX, voxelY1, voxelZ, ((aoRb) ? voxelColor * AO_MOD : voxelColor));
-			_AddVertex(voxelX, voxelY, voxelZ, voxelColor);
-			_AddVertex(voxelX, voxelY, voxelZ1, voxelColor);
+			_AddVertex(voxelX, voxelY, voxelZ, ((aoRt) ? voxelColor * AO_MOD : voxelColor));
+			_AddVertex(voxelX, voxelY, voxelZ1, ((aoRt) ? voxelColor * AO_MOD : voxelColor));
 		}
 		if (kv.second.faces[0]) {
 			// ambient occlusion from the back and top of this voxel
-			bool aoBt = m_voxels.count(VoxelPosition(kv.first.x, kv.first.y + 1, kv.first.z - 1)) > 0;
+			bool aoBt = useAO && m_voxels.count(VoxelPosition(kv.first.x, kv.first.y + 1, kv.first.z - 1)) > 0;
 			// ambient occlusion from the top and right of this voxel
-			bool aoTr = m_voxels.count(VoxelPosition(kv.first.x + 1, kv.first.y + 1, kv.first.z)) > 0;
+			bool aoTr = useAO && m_voxels.count(VoxelPosition(kv.first.x + 1, kv.first.y + 1, kv.first.z)) > 0;
 			// ambient occlusion from the top and left of this voxel
-			bool aoTl = m_voxels.count(VoxelPosition(kv.first.x - 1, kv.first.y + 1, kv.first.z)) > 0;
+			bool aoTl = useAO && m_voxels.count(VoxelPosition(kv.first.x - 1, kv.first.y + 1, kv.first.z)) > 0;
 			// ambient occlusion from the top and back of this voxel
-			bool aoTf = m_voxels.count(VoxelPosition(kv.first.x, kv.first.y + 1, kv.first.z + 1)) > 0;
+			bool aoTf = useAO && m_voxels.count(VoxelPosition(kv.first.x, kv.first.y + 1, kv.first.z + 1)) > 0;
 			// ambient occlusion from the top behind and to the left
-			bool aoTbl = m_voxels.count(VoxelPosition(kv.first.x - 1, kv.first.y + 1, kv.first.z - 1)) > 0 && !(aoBt || aoTl || aoTr);
+			bool aoTfl = useAO && m_voxels.count(VoxelPosition(kv.first.x - 1, kv.first.y + 1, kv.first.z + 1)) > 0 && !(aoBt || aoTl || aoTr || aoTf);
+			// ambient occlusion from the top behind and to the right
+			bool aoTfr = useAO && m_voxels.count(VoxelPosition(kv.first.x + 1, kv.first.y + 1, kv.first.z + 1)) > 0 && !(aoBt || aoTl || aoTr || aoTf);
 			// ambient occlusion from the top behind and to the left
-			bool aoTbr = m_voxels.count(VoxelPosition(kv.first.x + 1, kv.first.y + 1, kv.first.z - 1)) > 0 && !(aoBt || aoTl || aoTr);
+			bool aoTbl = useAO && m_voxels.count(VoxelPosition(kv.first.x - 1, kv.first.y + 1, kv.first.z - 1)) > 0 && !(aoBt || aoTl || aoTr || aoTf);
+			// ambient occlusion from the top behind and to the right
+			bool aoTbr = useAO && m_voxels.count(VoxelPosition(kv.first.x + 1, kv.first.y + 1, kv.first.z - 1)) > 0 && !(aoBt || aoTl || aoTr || aoTf);
 			// Top Face Triangle One
 			_AddVertex(voxelX, voxelY, voxelZ1, ((aoTr || aoTf) ? voxelColor * AO_MOD : voxelColor));
 			_AddVertex(voxelX1, voxelY, voxelZ, ((aoBt || aoTl || aoTbl) ? voxelColor * AO_MOD : voxelColor));
-			_AddVertex(voxelX1, voxelY, voxelZ1, ((aoTl || aoTf) ? voxelColor * AO_MOD : voxelColor));
+			_AddVertex(voxelX1, voxelY, voxelZ1, ((aoTl || aoTf || aoTfl) ? voxelColor * AO_MOD : voxelColor));
 			// Top Face Triangle Two
 			_AddVertex(voxelX, voxelY, voxelZ, ((aoBt || aoTr || aoTbr) ? voxelColor * AO_MOD : voxelColor));
 			_AddVertex(voxelX1, voxelY, voxelZ, ((aoBt || aoTl || aoTbl) ? voxelColor * AO_MOD : voxelColor));
 			_AddVertex(voxelX, voxelY, voxelZ1, ((aoTr || aoTf) ? voxelColor * AO_MOD : voxelColor));
 		}
 		if (kv.second.faces[1]) {
+			// ambient occlusion to the right and bottom of this voxel
+			bool aoRb = useAO && m_voxels.count(VoxelPosition(kv.first.x + 1, kv.first.y - 1, kv.first.z)) > 0;
+			// ambient occlusion to the front and bottom of this voxel
+			bool aoFb = useAO && m_voxels.count(VoxelPosition(kv.first.x, kv.first.y - 1, kv.first.z + 1)) > 0;
+			// ambient occlusion to the left and bottom of this voxel
+			bool aoLb = useAO && m_voxels.count(VoxelPosition(kv.first.x - 1, kv.first.y - 1, kv.first.z)) > 0;
+			// ambient occlusion to the back and bottom of this voxel
+			bool aoBb = useAO && m_voxels.count(VoxelPosition(kv.first.x, kv.first.y - 1, kv.first.z - 1)) > 0;
 			// Bottom Face Triangle One
-			_AddVertex(voxelX, voxelY1, voxelZ1, voxelColor);
-			_AddVertex(voxelX1, voxelY1, voxelZ, voxelColor);
-			_AddVertex(voxelX1, voxelY1, voxelZ1, voxelColor);
+			_AddVertex(voxelX, voxelY1, voxelZ1, ((aoFb || aoRb) ? voxelColor * AO_MOD : voxelColor));
+			_AddVertex(voxelX1, voxelY1, voxelZ, ((aoLb || aoBb) ? voxelColor * AO_MOD : voxelColor));
+			_AddVertex(voxelX1, voxelY1, voxelZ1, ((aoFb || aoLb) ? voxelColor * AO_MOD : voxelColor));
 			// Bottom Face Triangle Two
-			_AddVertex(voxelX, voxelY1, voxelZ, voxelColor);
-			_AddVertex(voxelX1, voxelY1, voxelZ, voxelColor);
-			_AddVertex(voxelX, voxelY1, voxelZ1, voxelColor);
+			_AddVertex(voxelX, voxelY1, voxelZ, ((aoRb || aoBb) ? voxelColor * AO_MOD : voxelColor));
+			_AddVertex(voxelX1, voxelY1, voxelZ, ((aoLb || aoBb) ? voxelColor * AO_MOD : voxelColor));
+			_AddVertex(voxelX, voxelY1, voxelZ1, ((aoFb || aoRb) ? voxelColor * AO_MOD : voxelColor));
 		}
 	}
 	// remove all of the voxels
@@ -279,15 +309,15 @@ void StaticRenderer::_RemoveDuplicateVoxelFaces() {
 		// if there is a voxel above this voxel
 		if (m_voxels.count(VoxelPosition(pos.x, pos.y + 1, pos.z)) > 0) m_voxels[pos].faces[0] = false;
 		// if there is a voxel below this voxel
-		if (m_voxels.count(VoxelPosition(pos.x, pos.y - 1, pos.z)) > 0) m_voxels[pos].faces[1] = false;
+		if (m_voxels.count(VoxelPosition(pos.x, pos.y - 1, pos.z)) > 0 || vox.type == VoxelType::WATER) m_voxels[pos].faces[1] = false;
 		// if there is a voxel to the left of this voxel
-		if (m_voxels.count(VoxelPosition(pos.x - 1, pos.y, pos.z)) > 0) m_voxels[pos].faces[2] = false;
+		if (m_voxels.count(VoxelPosition(pos.x - 1, pos.y, pos.z)) > 0 || vox.type == VoxelType::WATER) m_voxels[pos].faces[2] = false;
 		// if there is a voxel to the right of this voxel
-		if (m_voxels.count(VoxelPosition(pos.x + 1, pos.y, pos.z)) > 0) m_voxels[pos].faces[3] = false;
+		if (m_voxels.count(VoxelPosition(pos.x + 1, pos.y, pos.z)) > 0 || vox.type == VoxelType::WATER) m_voxels[pos].faces[3] = false;
 		// if there is a voxel in front of this voxel
-		if (m_voxels.count(VoxelPosition(pos.x, pos.y, pos.z + 1)) > 0) m_voxels[pos].faces[4] = false;
+		if (m_voxels.count(VoxelPosition(pos.x, pos.y, pos.z + 1)) > 0 || vox.type == VoxelType::WATER) m_voxels[pos].faces[4] = false;
 		// if there is a voxel behind this voxel 
-		if (m_voxels.count(VoxelPosition(pos.x, pos.y, pos.z - 1)) > 0) m_voxels[pos].faces[5] = false;
+		if (m_voxels.count(VoxelPosition(pos.x, pos.y, pos.z - 1)) > 0 || vox.type == VoxelType::WATER) m_voxels[pos].faces[5] = false;
 	}
 }
 
@@ -312,5 +342,4 @@ void StaticRenderer::_CalculateMeshMinimumAndMaximum(float x, float y, float z, 
 	if (m_meshMax.x < maxX) m_meshMax.x = maxX;
 	if (m_meshMax.y < maxY) m_meshMax.y = maxY;
 	if (m_meshMax.z < maxZ) m_meshMax.z = maxZ;
-
 }

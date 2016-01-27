@@ -5,10 +5,12 @@
 #define SHADE_STEP 15
 #define AO_MOD 0.16f
 
-enum class VoxelType : unsigned char {
-	GRASS = 'g',
-	DIRT = 'd',
-	SAND = 's'
+enum class VoxelType : unsigned short {
+	GRASS = 0,
+	DIRT = 1,
+	SAND = 2,
+	WATER = 3,
+	STONE = 4
 };
 
 VoxelType get_random_type(int ind);
@@ -27,7 +29,7 @@ struct VoxelPosition {
 		return (x == right.x) && (y == right.y) && (z == right.z);
 	}
 	inline bool operator<(const VoxelPosition& right) const {
-		return (x < right.x) && (y < right.y) && (z < right.z);
+		return (z < right.z);
 	}
 };
 
@@ -51,6 +53,11 @@ struct Voxel {
 	// face order:
 	// top, bottom, left, right, front, back
 	bool faces[6] = { true, true, true, true, true, true };
+	Voxel() = default;
+	Voxel(VoxelType type, int shade) {
+		this->type = type;
+		this->shade = shade;
+	}
 };
 
 struct Color {
@@ -65,27 +72,30 @@ struct Color {
 		b(b),
 		a(a) {
 	}
+	inline Color operator=(const Color &right) const {
+		// return a new color with the color of the right
+		return Color(right.r, right.g, right.b, right.a);
+	}
 	inline Color operator-(const Color &right) const {
 		// subtract each of the components by the other
-		return Color(this->r - right.r, this->g - right.g, this->b - right.b, this->a - right.a);
+		// (note: don't do anything to the alpha, if we want to manipulate it, do it manually)
+		return Color(this->r - right.r, this->g - right.g, this->b - right.b, this->a);
 	}
 	inline Color operator-(const float right) const {
 		// subtract all of the components by the rvalue
-		return Color(this->r - right, this->g - right, this->b - right, this->a - right);
+		// (note: don't do anything to the alpha, if we want to manipulate it, do it manually)
+		return Color(this->r - right, this->g - right, this->b - right, this->a);
 	}
 	inline Color operator*(const float right) const {
 		// multiply all of the components by the rvalue
-		return Color(this->r * right, this->g * right, this->b * right, this->a * right);
+		// (note: don't do anything to the alpha, if we want to manipulate it, do it manually)
+		return Color(this->r * right, this->g * right, this->b * right, this->a);
 	}
 };
 
 Color color_from_rgb(unsigned int r, unsigned int g, unsigned int b);
 
 Color get_voxel_color(VoxelType type, int shade);
-
-float min(float l, float r);
-
-float max(float l, float r);
 
 class StaticRenderer {
 public:
@@ -107,9 +117,9 @@ private:
 	std::unordered_map<VoxelPosition, Voxel> m_voxels;
 	std::vector<float> m_elements;
 	glm::mat4 m_mdl;
-	glm::mat4 m_transMat;
+	glm::vec3 m_trans;
 	glm::vec3 m_rot;
-	glm::mat4 m_scaleMat;
+	glm::vec3 m_scale;
 	glm::vec3 m_meshMin;
 	glm::vec3 m_meshMax;
 

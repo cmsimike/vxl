@@ -1,56 +1,68 @@
 #include "stdafx.hpp"
 #include "World.hpp"
-#include <chrono>
+#include "vxl.hpp"
 
 World::World() :
 	m_chunkSize(16),
 	m_generator(std::random_device()()),
-	m_typeRandom(0, VOXEL_TYPE_AMOUNT - 1),
 	m_shadeRandom(0, MAX_SHADE - 1) {
-	auto start = std::chrono::system_clock::now();
-	m_renderer = new StaticRenderer();
-	std::thread creationThread(&World::_Create, this);
-	creationThread.join();
-	m_renderer->Init();
-	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count() << "ms" << std::endl;
-}
-
-World::~World() {
-	delete m_renderer;
-}
-
-void World::Draw(Shader* shader) {
-	m_renderer->Draw(shader);
-}
-
-void World::Update() {
-	m_renderer->Update();
-	m_renderer->Rotate(0.0f, 0.01f, 0.0f);
+	// generate a random seed
+	srand(time(NULL));
+	m_seed = rand();
+	// create the actual world
+	_Create();
 }
 
 void World::_Create() {
-	int maxX = m_chunkSize;
-	int maxZ = m_chunkSize;
-	for (int z = -m_chunkSize; z < m_chunkSize; z++) {
-		maxX = m_chunkSize;
-		maxZ = m_chunkSize;
-		for (int y = -m_chunkSize; y < m_chunkSize; y++) {
-			for (int x = -m_chunkSize; x < m_chunkSize; x++) {
-				if (x < maxX && z < maxZ) {
-					VoxelPosition pos;
-					Voxel voxel;
-					pos.x = ((y < -m_chunkSize) ? x + (m_chunkSize * 2) : x - (abs(y) - 1)) + (m_chunkSize * 2);
-					pos.y = y + (m_chunkSize / 2.0f);
-					pos.z = ((y < -m_chunkSize) ? z + (m_chunkSize * 2) : z - (abs(y) - 1)) + (m_chunkSize * 2);
-					// get a random shade for this voxel
-					voxel.shade = m_shadeRandom(m_generator);
-					// get a random voxel type
-					voxel.type = VoxelType::SAND;
-					m_renderer->AddVoxel(pos, voxel);
-				}
-			}
-			maxX -= 2;
-			maxZ -= 2;
+	// create about twenty chunks
+	for (int x = -5; x < 5; x++)
+		for (int z = -5; z < 5; z++) {
+			// place a chunk instance at the coordinates with the size
+			// the seed is used for the generator
+			Chunk* chunk = new Chunk(x * m_chunkSize, 0, z * m_chunkSize, m_chunkSize, m_seed);
+			// the thread for generating the chunk
+			// pass in the random shade generator as well
+			std::thread genThread(&Chunk::Generate, chunk, m_generator, m_shadeRandom);
+			// join the thread back to the main loop
+			genThread.join();
+			// initialize the renderers for this chunk
+			// allows for drawing
+			chunk->InitRenderers();
+			// add the chunk to the chunk vector
+			m_chunks.push_back(chunk);
 		}
-	}
+}
+
+void World::Draw(Shader* shader, Shader* water) {
+	// for every chunk in the chunk vector, draw it with the bound shader
+	// todo: add culling/on-the-fly generation
+	shader->Bind();
+	for (size_t i = 0; i < m_chunks.size(); i++)
+		m_chunks[i]->DrawOpaque(shader);
+	shader->Unbind();
+	water->Bind();
+	glDepthMask(GL_FALSE);
+	m_time += 0.01f * vxl::delta;
+	water->Uniform1f("time", m_time);
+	for (size_t i = 0; i < m_chunks.size(); i++)
+		m_chunks[i]->DrawTransparent(water);
+	glDepthMask(GL_TRUE);
+	water->Unbind();
+}
+
+void World::Update() {
+	// update every chunk in the chunk vector
+	// todo: add culling/on-the-fly generation
+	for (size_t i = 0; i < m_chunks.size(); i++)
+		m_chunks[i]->Update();
+}
+
+World::~World() {
+	// for every chunk in the chunk vector
+	// delete the pointer to the chunk
+	for (size_t i = 0; i < m_chunks.size(); i++)
+		delete m_chunks[i];
+	// once each pointer is deleted
+	// clear the empty references
+	m_chunks.clear();
 }

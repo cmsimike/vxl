@@ -6,6 +6,9 @@ void glfw_resize_callback(GLFWwindow* window, int width, int height) {
 	game->Resize(width, height);
 }
 
+time_t vxl::beginTime = time(NULL);
+float vxl::delta = 0.0f;
+
 vxl::vxl() :
 	m_window(nullptr),
 	m_width(640),
@@ -16,6 +19,7 @@ vxl::vxl() :
 
 vxl::~vxl() {
 	delete m_defaultShader;
+	delete m_waterShader;
 	delete m_world;
 	if (m_window)
 		glfwDestroyWindow(m_window);
@@ -80,6 +84,12 @@ int vxl::_CreateWindow() {
 	}
 	// enable some things for correct rendering
 	_EnableGL();
+	// get the main monitor video mode
+	const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+	// set the glfw window to the center of the screen
+	glfwSetWindowPos(m_window, (mode->width / 2) - (m_width / 2), (mode->height) / 2 - (m_height / 2));
+	// set the glfw cursor to hidden
+	glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	return 0;
 }
 
@@ -87,23 +97,54 @@ void vxl::_EnableGL() {
 	glViewport(0, 0, static_cast<GLsizei>(m_width), static_cast<GLsizei>(m_height));
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void vxl::_Init() {
 	m_defaultShader = new Shader(SHADER_DIR + std::string("vertex.glsl"), SHADER_DIR + std::string("fragment.glsl"));
+	m_waterShader = new Shader(SHADER_DIR + std::string("water_Vertex.glsl"), SHADER_DIR + std::string("water_Fragment.glsl"));
 	m_world = new World();
-	m_camera.Translate(0.0f, 0.0f, -250.0f);
 }
 
 void vxl::_Render() {
-	m_defaultShader->Bind();
-	m_world->Draw(m_defaultShader);
-	m_defaultShader->Unbind();
+	m_world->Draw(m_defaultShader, m_waterShader);
 }
 
 void vxl::_Update() {
+	// calculate delta time
+	m_currentTime = glfwGetTime();
+	delta = m_currentTime - m_lastTime;
+	m_lastTime = m_currentTime;
+	// get the current mouse position
+	double mouseX;
+	double mouseY;
+	glfwGetCursorPos(m_window, &mouseX, &mouseY);
+	// rotate the camera by the mouse speed
+	m_camera.Rotate(0.005f * static_cast<float>(((m_width / 2.0f) - mouseX)), 0.005f * static_cast<float>(((m_height / 2.0f) - mouseY)), 0.0f);
+	// move the camera forward
+	if (glfwGetKey(m_window, GLFW_KEY_W) == GLFW_PRESS) {
+		m_camera.Translate((m_camera.GetDirection() * 10.0f));
+	}
+	// move the camera backward
+	if (glfwGetKey(m_window, GLFW_KEY_S) == GLFW_PRESS) {
+		m_camera.Translate(-(m_camera.GetDirection() * 10.0f));
+	}
+	// move the camera left
+	if (glfwGetKey(m_window, GLFW_KEY_A) == GLFW_PRESS) {
+		m_camera.Translate(-(m_camera.GetRight() * 10.0f));
+	}
+	// move the camera right
+	if (glfwGetKey(m_window, GLFW_KEY_D) == GLFW_PRESS) {
+		m_camera.Translate((m_camera.GetRight() * 10.0f));
+	}
 	m_defaultShader->Bind();
 	m_camera.Update(m_defaultShader);
 	m_defaultShader->Unbind();
+	m_waterShader->Bind();
+	m_camera.Update(m_waterShader);
+	m_waterShader->Unbind();
 	m_world->Update();
+	// set the cursor to the middle of the screen
+	glfwSetCursorPos(m_window, static_cast<double>(m_width) / 2.0, static_cast<double>(m_height) / 2.0);
 }
